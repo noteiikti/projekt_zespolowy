@@ -1,19 +1,56 @@
-import { useState, useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { useEffect, useRef, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
+import 'leaflet-routing-machine';
 import 'leaflet/dist/leaflet.css';
 
 const userIcon = L.divIcon({
   className: 'custom-user-marker',
-  html: `
-    <div class="user-location-wrapper">
-      <div class="user-location-pulse"></div>
-      <div class="user-location-dot"></div>
-    </div>
-  `,
-  iconSize: [20, 20],
-  iconAnchor: [10, 10],
+  html: `<div class="user-location-wrapper"><div class="user-location-pulse"></div><div class="user-location-dot"></div></div>`,
+  iconSize: [20, 20], iconAnchor: [10, 10],
 });
+
+function PopupCloser() {
+  const map = useMap();
+  useEffect(() => {
+    const handleClose = () => map.closePopup();
+    window.addEventListener('close-map-popups', handleClose);
+    return () => window.removeEventListener('close-map-popups', handleClose);
+  }, [map]);
+  return null;
+}
+
+function ActiveLocationCenter({ activeLocationId, routePoints }) {
+  const map = useMap();
+  const routePointsRef = useRef(routePoints);
+  const lastFlownId = useRef(null);
+
+  useEffect(() => {
+    routePointsRef.current = routePoints;
+  }, [routePoints]);
+
+  useEffect(() => {
+    if (activeLocationId && activeLocationId !== lastFlownId.current) {
+      lastFlownId.current = activeLocationId;
+      
+      if (!window.__isMapMarkerClick) {
+        const point = routePointsRef.current.find(p => p.id === activeLocationId);
+        if (point) {
+          const currentCenter = map.getCenter();
+          const isAlreadyCentered = Math.abs(currentCenter.lat - point.lat) < 0.0005 && Math.abs(currentCenter.lng - point.lng) < 0.0005;
+          
+          if (!isAlreadyCentered) {
+            map.flyTo([point.lat, point.lng], map.getZoom(), { animate: true, duration: 0.5 });
+          }
+        }
+      }
+    } else if (!activeLocationId) {
+      lastFlownId.current = null;
+    }
+  }, [activeLocationId, map]);
+
+  return null;
+}
 
 function LocateControl({ isDarkMode }) {
   const map = useMap();
@@ -22,154 +59,239 @@ function LocateControl({ isDarkMode }) {
 
   useEffect(() => {
     map.locate({ watch: true, enableHighAccuracy: true });
-
     map.on('locationfound', (e) => {
       setPosition(e.latlng);
-      if (isFirstLocationRef.current) {
-        map.flyTo(e.latlng, 15);
-        isFirstLocationRef.current = false;
-      }
+      if (isFirstLocationRef.current) { map.flyTo(e.latlng, 15); isFirstLocationRef.current = false; }
     });
-
-    map.on('locationerror', (e) => {
-      console.warn("Помилка доступу до геолокації:", e.message);
-    });
-
     return () => map.stopLocate();
   }, [map]);
 
-  const handleCenterClick = () => {
-    if (position) {
-      map.flyTo(position, 15);
-    } else {
-      map.locate({ watch: true, enableHighAccuracy: true });
-    }
-  };
-
   return (
     <>
-      <button
-        onClick={handleCenterClick}
-        title="Центрувати на моїй позиції"
-        style={{
-          position: 'absolute',
-          top: '80px',
-          left: '10px',
-          zIndex: 1000,
-          backgroundColor: isDarkMode ? '#2d2d2d' : 'white',
-          color: isDarkMode ? '#e0e0e0' : 'black',
-          border: `2px solid ${isDarkMode ? '#444' : 'rgba(0,0,0,0.2)'}`,
-          borderRadius: '4px',
-          width: '34px',
-          height: '34px',
-          cursor: 'pointer',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          fontSize: '18px',
-          boxShadow: '0 1px 5px rgba(0,0,0,0.65)',
-          transition: 'background-color 0.2s'
-        }}
-      >
-        📍
-      </button>
-
-      {position && (
-        <Marker position={position} icon={userIcon}>
-          <Popup>Ви знаходитесь тут!</Popup>
-        </Marker>
-      )}
+      <button onClick={() => position ? map.flyTo(position, 15) : map.locate()} style={{ position: 'absolute', top: '80px', left: '10px', zIndex: 1000, backgroundColor: isDarkMode ? '#2d2d2d' : 'white', color: isDarkMode ? '#e0e0e0' : 'black', border: `2px solid ${isDarkMode ? '#444' : 'rgba(0,0,0,0.2)'}`, borderRadius: '4px', width: '34px', height: '34px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '18px', boxShadow: '0 1px 5px rgba(0,0,0,0.65)' }}>📍</button>
+      {position && <Marker position={position} icon={userIcon}><Popup autoPan={false}>Ви знаходитесь тут!</Popup></Marker>}
     </>
   );
 }
 
-export default function MapComponent({ routePoints, isDarkMode }) {
-  const centerPosition = [51.7592, 19.4559];
-  const polylineColor = isDarkMode ? "#ffffff" : "blue";
-  
-  // Новий стан для зберігання складної геометрії доріг
-  const [routeGeometry, setRouteGeometry] = useState([]);
+function MapInteraction({ isSelectingOnMap, onMapSelect, setActiveLocationId }) {
+  const map = useMap();
+  useMapEvents({ 
+    click(e) { 
+      if (isSelectingOnMap) {
+        onMapSelect(e.latlng); 
+      } else if (setActiveLocationId) {
+        setActiveLocationId(null);
+      }
+    } 
+  });
+  useEffect(() => { map.getContainer().style.cursor = isSelectingOnMap ? 'crosshair' : ''; }, [isSelectingOnMap, map]);
+  return null;
+}
 
-  // Ефект, який викликає OSRM API щоразу, коли змінюються точки маршруту
+function RoutingMachine({ routePoints, isDarkMode, onMapRouteUpdate, setActiveLocationId }) {
+  const map = useMap();
+  const routingControlRef = useRef(null);
+  const routePointsRef = useRef(routePoints);
+  const onMapRouteUpdateRef = useRef(onMapRouteUpdate);
+  const setActiveLocationIdRef = useRef(setActiveLocationId);
+
+  useEffect(() => { routePointsRef.current = routePoints; }, [routePoints]);
+  useEffect(() => { onMapRouteUpdateRef.current = onMapRouteUpdate; }, [onMapRouteUpdate]);
+  useEffect(() => { setActiveLocationIdRef.current = setActiveLocationId; }, [setActiveLocationId]);
+
   useEffect(() => {
-    if (!routePoints || routePoints.length < 2) {
-      setRouteGeometry([]); // Очищаємо лінію, якщо точок менше двох
-      return;
-    }
+    if (!map) return;
 
-    // OSRM вимагає координати у форматі "довгота,широта" (lng,lat), розділені крапкою з комою
-    const coordinatesString = routePoints
-      .map(loc => `${loc.lng},${loc.lat}`)
-      .join(';');
+    const control = L.Routing.control({
+      waypoints: routePoints.map(p => L.latLng(p.lat, p.lng)),
+      router: L.Routing.osrmv1({ serviceUrl: 'https://routing.openstreetmap.de/routed-foot/route/v1', profile: 'foot' }),
+      routeWhileDragging: false, addWaypoints: true, show: false, fitSelectedRoutes: false,
+      lineOptions: { styles: [{ color: isDarkMode ? '#10b981' : '#28a745', weight: 5, opacity: 0.8, dashArray: '10, 10' }] },
+      
+      createMarker: function(i, waypoint, n) {
+        const rp = routePointsRef.current;
+        const pointInfo = rp.find(p => Math.abs(p.lat - waypoint.latLng.lat) < 0.001 && Math.abs(p.lng - waypoint.latLng.lng) < 0.001);
+        const pointId = pointInfo ? pointInfo.id : `temp-${i}`;
 
-    // Формуємо URL запиту. overview=full дає максимальну деталізацію поворотів, geometries=geojson - зручний формат даних
-    const url = `https://router.project-osrm.org/route/v1/driving/${coordinatesString}?overview=full&geometries=geojson`;
+        const marker = L.marker(waypoint.latLng, {
+          draggable: true,
+          icon: L.icon({
+            iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+            shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+            iconAnchor: [12, 41], popupAnchor: [1, -34], // Зміщення вже "вшите" сюди
+            className: `route-marker-${pointId}`
+          })
+        });
 
-    fetch(url)
-      .then(res => res.json())
-      .then(data => {
-        if (data.routes && data.routes.length > 0) {
-          // GeoJSON повертає координати як [lng, lat], а Leaflet Polyline вимагає [lat, lng]. Тому перевертаємо їх.
-          const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
-          setRouteGeometry(coords);
-        }
-      })
-      .catch(err => console.error("Помилка побудови маршруту:", err));
+        const title = pointInfo ? pointInfo.name : `Точка ${i + 1}`;
+        const div = document.createElement('div');
+        div.innerHTML = `
+          <div style="text-align:center;">
+            <div style="font-weight:bold; margin-bottom:8px; font-size:14px;">${title}</div>
+            <button class="remove-btn" style="background:#ff4d4d; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">Видалити з мапи</button>
+          </div>
+        `;
+        div.querySelector('.remove-btn').addEventListener('click', () => {
+          const wps = control.getWaypoints();
+          wps.splice(i, 1);
+          control.setWaypoints(wps);
+          map.closePopup();
+        });
+        
+        // 1. Прив'язуємо вікно до маркера, щоб воно знало його координати та рухалось за ним
+        marker.bindPopup(div, { autoPan: false });
+        
+        // 2. Жорстко вимикаємо стандартний клік Leaflet, щоб він не конфліктував із React
+        marker.off('click');
+        
+        marker.on('dragstart', () => {
+          if (pointInfo && setActiveLocationIdRef.current) {
+            window.__isMapMarkerClick = true;
+            setActiveLocationIdRef.current(pointInfo.id);
+            marker.closePopup(); // Приховуємо вікно на час перетягування для зручності
+            setTimeout(() => { window.__isMapMarkerClick = false; }, 100);
+          }
+        });
+        
+        // 3. Беремо управління вікном виключно у свої руки
+        marker.on('click', () => {
+          if (pointInfo && setActiveLocationIdRef.current) {
+            window.__isMapMarkerClick = true;
+            setActiveLocationIdRef.current(prev => {
+              if (prev === pointInfo.id) {
+                marker.closePopup();
+                return null;
+              } else {
+                marker.openPopup();
+                return pointInfo.id;
+              }
+            });
+            setTimeout(() => { window.__isMapMarkerClick = false; }, 100);
+          }
+        });
+
+        return marker;
+      }
+    }).addTo(map);
+
+    control.on('waypointschanged', (e) => {
+      const validWps = e.waypoints.filter(w => w.latLng);
+      if (validWps.length > 0) onMapRouteUpdateRef.current(validWps);
+    });
+
+    routingControlRef.current = control;
+    
+    return () => {
+      try {
+        if (map) map.removeControl(control);
+      } catch (error) {}
+    };
+  }, [map]);
+
+  useEffect(() => {
+    if (!routingControlRef.current) return;
+    
+    const timer = setTimeout(() => {
+      const currentWps = routingControlRef.current.getWaypoints().filter(w => w.latLng);
+      const isDifferent = routePoints.length !== currentWps.length || routePoints.some((p, i) => {
+        const wp = currentWps[i].latLng;
+        return Math.abs(p.lat - wp.lat) > 0.001 || Math.abs(p.lng - wp.lng) > 0.001;
+      });
+      
+      if (isDifferent) {
+        routingControlRef.current.setWaypoints(routePoints.map(p => L.latLng(p.lat, p.lng)));
+      }
+    }, 800); 
+
+    return () => clearTimeout(timer); 
   }, [routePoints]);
+
+  useEffect(() => {
+    if (routingControlRef.current) {
+      const container = routingControlRef.current.getContainer();
+      if (container) container.style.display = 'none';
+    }
+  });
+
+  return null;
+}
+
+export default function MapComponent({ routePoints, isDarkMode, isSelectingOnMap, onMapSelect, onMapRouteUpdate, activeLocationId, setActiveLocationId }) {
+  const centerPosition = [51.7592, 19.4559];
 
   return (
     <>
       <style>
         {`
-          ${isDarkMode ? `
-            .leaflet-tile {
-              filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+          ${isDarkMode ? `.leaflet-tile { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }` : ''}
+          .leaflet-routing-container { display: none !important; }
+          .user-location-wrapper { position: relative; width: 20px; height: 20px; }
+          .user-location-dot { width: 14px; height: 14px; background-color: #4285F4; border: 2px solid white; border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 4px rgba(0,0,0,0.4); z-index: 2; }
+          .user-location-pulse { width: 40px; height: 40px; background-color: rgba(66, 133, 244, 0.4); border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); animation: pulse-animation 2s infinite ease-in-out; pointer-events: none; z-index: 1; }
+          @keyframes pulse-animation { 0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1.2); opacity: 0; } }
+          
+          ${activeLocationId ? `
+            .route-marker-${activeLocationId} {
+              filter: hue-rotate(140deg) saturate(3) brightness(0.9) !important;
             }
           ` : ''}
-
-          .user-location-wrapper { position: relative; width: 20px; height: 20px; }
-          .user-location-dot {
-            width: 14px; height: 14px; background-color: #4285F4; border: 2px solid white;
-            border-radius: 50%; position: absolute; top: 50%; left: 50%;
-            transform: translate(-50%, -50%); box-shadow: 0 0 4px rgba(0,0,0,0.4); z-index: 2;
-          }
-          .user-location-pulse {
-            width: 40px; height: 40px; background-color: rgba(66, 133, 244, 0.4);
-            border-radius: 50%; position: absolute; top: 50%; left: 50%;
-            transform: translate(-50%, -50%); animation: pulse-animation 2s infinite ease-in-out;
-            pointer-events: none; z-index: 1;
-          }
-          @keyframes pulse-animation {
-            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 1; }
-            100% { transform: translate(-50%, -50%) scale(1.2); opacity: 0; }
+          
+          .leaflet-overlay-pane path {
+            stroke: ${isDarkMode ? '#10b981' : '#28a745'} !important;
+            transition: stroke 0.3s ease;
           }
         `}
       </style>
       
-      <MapContainer center={centerPosition} zoom={13} style={{ height: "100%", width: "100%" }}>
-        <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; OpenStreetMap contributors'
+      <MapContainer center={centerPosition} zoom={13} doubleClickZoom={false} style={{ height: "100%", width: "100%" }}>
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap' />
+        
+        <PopupCloser />
+        <ActiveLocationCenter activeLocationId={activeLocationId} routePoints={routePoints} />
+        <LocateControl isDarkMode={isDarkMode} />
+        <MapInteraction 
+          isSelectingOnMap={isSelectingOnMap} 
+          onMapSelect={onMapSelect} 
+          setActiveLocationId={setActiveLocationId}
         />
         
-        {routePoints && routePoints.map((loc) => (
-          <Marker key={loc.id} position={[loc.lat, loc.lng]}>
-            <Popup>{loc.name}</Popup>
+        {routePoints.length === 1 && (
+          <Marker 
+            position={[routePoints[0].lat, routePoints[0].lng]}
+            eventHandlers={{ 
+              click: () => {
+                window.__isMapMarkerClick = true;
+                setActiveLocationId(prev => {
+                  if (prev === routePoints[0].id) {
+                    setTimeout(() => window.dispatchEvent(new Event('close-map-popups')), 10);
+                    return null;
+                  }
+                  return routePoints[0].id;
+                });
+                setTimeout(() => { window.__isMapMarkerClick = false; }, 100);
+              }
+            }}
+            icon={L.icon({
+              iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+              shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+              iconAnchor: [12, 41], popupAnchor: [1, -34],
+              className: `route-marker-${routePoints[0].id}`
+            })}
+          >
+            {/* Повертаємо класичну обгортку для одинарного маркера, щоб він теж знав свій відступ */}
+            <Popup autoPan={false}>{routePoints[0].name}</Popup>
           </Marker>
-        ))}
-
-        {/* Тепер малюємо лінію не напрястець, а по масиву routeGeometry, який повернув сервер */}
-        {routeGeometry.length > 1 && (
-          <Polyline 
-            key={isDarkMode ? "dark" : "light"} 
-            positions={routeGeometry} 
-            color={polylineColor} 
-            weight={4} 
-            opacity={0.7} 
-          />
         )}
 
-        <LocateControl isDarkMode={isDarkMode} />
+        {routePoints.length >= 2 && (
+          <RoutingMachine 
+            routePoints={routePoints} 
+            isDarkMode={isDarkMode} 
+            onMapRouteUpdate={onMapRouteUpdate} 
+            setActiveLocationId={setActiveLocationId} 
+          />
+        )}
       </MapContainer>
     </>
   );
