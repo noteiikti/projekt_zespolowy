@@ -11,13 +11,14 @@
     "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css,json}\""
   },
   "dependencies": {
-    "firebase": "^13.2.0",
+    "firebase": "^9.14.0",
     "framer-motion": "^14.10.1",
     "leaflet": "^1.9.4",
     "leaflet-routing-machine": "^3.2.12",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "react-leaflet": "^5.0.0"
+    "react-leaflet": "^5.0.0",
+    "react-router-dom": "^7.18.5"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
@@ -28,6 +29,6 @@
   },
   "allowScripts": {
     "@firebase/util@1.15.3": true,
-    "protobufjs@7.6.6": true
+    "protobufjs@6.11.6": true
   }
 }

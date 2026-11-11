@@ -20,6 +20,10 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const analytics = getAnalytics(app);
+<<<<<<< HEAD:src/firebase.js
 // Експортуємо auth та provider, щоб використовувати їх у App.jsx
+=======
+// Eksportujemy auth i provider, aby używać ich w App.jsx.
+>>>>>>> origin/main:route-frontend/src/firebase.js
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();

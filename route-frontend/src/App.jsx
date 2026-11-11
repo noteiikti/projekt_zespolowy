@@ -3,12 +3,13 @@ import { Reorder } from 'framer-motion';
 import MapComponent from './components/MapComponent';
 import { signInWithPopup, signOut } from "firebase/auth";
 import { auth, googleProvider } from "./firebase";
+import { useParams, useNavigate } from 'react-router-dom';
 
 const mockLocations = [
-  { id: 1, name: "Galeria Manufaktura", lat: 51.7784, lng: 19.4493, image: "https://upload.wikimedia.org/wikipedia/commons/c/cd/Manufaktura_Lodz_01.jpg", description: "Величезний торгово-розважальний комплекс.", hours: "10:00 - 22:00" },
-  { id: 2, name: "Ulica Piotrkowska", lat: 51.7645, lng: 19.4578, image: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Piotrkowska_noc%C4%85.jpg/320px-Piotrkowska_noc%C4%85.jpg", description: "Головна артерія Лодзя.", hours: "Цілодобово" },
-  { id: 3, name: "Galeria Łódzka", lat: 51.7582, lng: 19.4646, image: "https://pl.wikipedia.org/wiki/Galeria_%C5%81%C3%B3dzka#/media/Plik:Galeria_%C5%81%C3%B3dzka_2017.jpg", description: "Сучасний торговий центр у центрі.", hours: "09:30 - 21:00" },
-  { id: 4, name: "Księży Młyn", lat: 51.7534, lng: 19.4812, image: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Ksiezy_mlyn.jpg/320px-Ksiezy_mlyn.jpg", description: "Історичний фабрично-житловий комплекс.", hours: "24/7" }
+  { id: 1, name: "Galeria Manufaktura", lat: 51.7784, lng: 19.4493, image: "https://upload.wikimedia.org/wikipedia/commons/c/cd/Manufaktura_Lodz_01.jpg", description: "Ogromne centrum handlowo-rozrywkowe.", hours: "10:00 - 22:00" },
+  { id: 2, name: "Ulica Piotrkowska", lat: 51.7645, lng: 19.4578, image: "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Piotrkowska_noc%C4%85.jpg/320px-Piotrkowska_noc%C4%85.jpg", description: "Główna arteria Łodzi.", hours: "Całodobowo" },
+  { id: 3, name: "Galeria Łódzka", lat: 51.7582, lng: 19.4646, image: "https://pl.wikipedia.org/wiki/Galeria_%C5%81%C3%B3dzka#/media/Plik:Galeria_%C5%81%C3%B3dzka_2017.jpg", description: "Nowoczesne centrum handlowe w centrum miasta.", hours: "09:30 - 21:00" },
+  { id: 4, name: "Księży Młyn", lat: 51.7534, lng: 19.4812, image: "https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Ksiezy_mlyn.jpg/320px-Ksiezy_mlyn.jpg", description: "Zabytkowy kompleks fabryczno-mieszkalny.", hours: "Całodobowo" }
 ];
 
 function LocationCard({ loc, isAdded, onToggle, isDarkMode }) {
@@ -18,17 +19,17 @@ function LocationCard({ loc, isAdded, onToggle, isDarkMode }) {
   const textColor = isDarkMode ? '#e0e0e0' : '#333';
   const borderColor = isDarkMode ? '#444' : '#ccc';
 
-  // ГЕНЕРУЄМО ЗАГЛУШКУ: Світлу або темну залежно від теми
+  // Generujemy jasny lub ciemny obraz zastępczy, zależnie od motywu.
   const placeholderImg = isDarkMode 
     ? "https://placehold.co/100x150/2d2d2d/666666?text=📍" 
     : "https://placehold.co/100x150/f0f0f0/a0a0a0?text=📍";
     
-  // Використовуємо фото локації, а якщо його немає - ставимо заглушку
+  // Używamy zdjęcia lokalizacji lub obrazu zastępczego, jeśli zdjęcie nie jest dostępne.
   const bgImage = loc.image ? loc.image : placeholderImg;
 
   return (
     <div style={{ display: 'flex', alignItems: 'stretch', border: `1px solid ${borderColor}`, borderRadius: '6px', marginBottom: '15px', backgroundColor: isDarkMode ? '#2d2d2d' : '#fff', overflow: 'hidden' }}>
-      {/* Підставляємо перевірене посилання у background-image */}
+      {/* Ustawiamy sprawdzony adres w background-image. */}
       <div style={{ width: '100px', flexShrink: 0, backgroundImage: `url('${bgImage}')`, backgroundSize: 'cover', backgroundPosition: 'center', borderRight: `1px solid ${borderColor}` }} />
       <div style={{ flexGrow: 1, padding: '10px 12px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
         <div>
@@ -45,77 +46,107 @@ function LocationCard({ loc, isAdded, onToggle, isDarkMode }) {
 }
 
 export default function App() {
-  // НОВИЙ СТАН: Зберігає дані користувача, якщо він залогінений
+  // Przechowuje dane zalogowanego użytkownika.
   const [user, setUser] = useState(null);
 
-  // ФУНКЦІЯ: Вхід через Google
+  const { id } = useParams(); // Pobieramy identyfikator z adresu.
+  const navigate = useNavigate(); // Służy do czyszczenia paska adresu.
+
+  useEffect(() => {
+    // Importujemy trasę, jeśli jej identyfikator znajduje się w adresie URL.
+    if (id) {
+      const importRoute = async () => {
+        try {
+          const response = await fetch(`http://localhost:5000/api/routes/${id}`);
+          const data = await response.json();
+
+          if (data.success && data.route && data.route.waypoints) {
+            // Zapisujemy wczytane punkty w stanie trasy.
+            setSelectedRoute(data.route.waypoints);
+            
+            // Przywracamy podstawowy adres URL po imporcie.
+            navigate('/', { replace: true });
+          } else {
+            alert("Nie udało się zaimportować trasy. Link może być nieaktualny.");
+            navigate('/', { replace: true });
+          }
+        } catch (error) {
+          console.error("Błąd importowania trasy:", error);
+          alert("Błąd połączenia z serwerem podczas importowania trasy.");
+          navigate('/', { replace: true });
+        }
+      };
+
+      importRoute();
+    }
+  }, [id, navigate]);
+  // ===================================
+
+  // Logowanie przez Google.
   const handleGoogleLogin = async () => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       setUser(result.user);
       
-      // Отримуємо JWT-токен, який згодом будемо відправляти бекендеру
+      // Pobieramy token JWT, który będzie wysyłany do backendu.
       const token = await result.user.getIdToken();
-      console.log("Успішний вхід! Ось твій JWT токен для бекенду:", token);
+      console.log("Logowanie zakończone powodzeniem. Token JWT dla backendu:", token);
     } catch (error) {
-      console.error("Помилка авторизації:", error);
+      console.error("Błąd autoryzacji:", error);
     }
   };
 
-  // ФУНКЦІЯ: Вихід з акаунту
+  // Wylogowanie.
   const handleLogout = async () => {
     try {
       await signOut(auth);
       setUser(null);
     } catch (error) {
-      console.error("Помилка виходу:", error);
+      console.error("Błąd wylogowania:", error);
     }
   };
 
-  // ФУНКЦІЯ: Збереження та генерація посилання
+  // Zapisanie trasy i utworzenie linku do udostępnienia.
   const handleSaveAndShare = async () => {
-    if (!user) return alert("Будь ласка, увійдіть, щоб зберегти маршрут!");
-    if (selectedRoute.length < 2) return alert("Додайте хоча б 2 точки до маршруту!");
+    // Sprawdzamy, czy użytkownik jest zalogowany (zmienna user z Firebase Auth).
+    if (!user) {
+      return alert("Zaloguj się, aby zapisać trasę.");
+    }
+    if (selectedRoute.length < 2) {
+      return alert("Dodaj co najmniej dwa punkty do trasy!");
+    }
 
     try {
-      // 1. Отримуємо свіжий токен (це ВАЖЛИВО робити перед кожним запитом на бекенд)
-      const token = await user.getIdToken();
-
-      // 2. Формуємо JSON, який чекатиме бекендер
-      const payload = {
-        route_name: `Маршрут від ${user.displayName}`,
-        waypoints: selectedRoute
-      };
-
-      console.log("Готуємось відправити на бекенд. Токен:", token);
-      console.log("Дані маршруту:", payload);
-
-      // --- ТУТ У МАЙБУТНЬОМУ БУДЕ РЕАЛЬНИЙ ЗАПИТ ---
-      /*
+      // Wysyłamy żądanie POST do backendu.
       const response = await fetch('http://localhost:5000/api/routes', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}` // Передаємо токен для Node.js
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          points: selectedRoute,
+          userId: user.uid, 
+          email: user.email,
+          name: "Moja trasa po Łodzi"
+        })
       });
+
       const data = await response.json();
-      const routeId = data.route_id; // Отримуємо реальний ID з бази PostgreSQL
-      */
 
-      // --- ПОКИ БЕКЕНДУ НЕМАЄ, ІМІТУЄМО УСПІШНЕ ЗБЕРЕЖЕННЯ ---
-      const mockRouteId = "route-" + Date.now().toString(36);
-
-      // 3. Формуємо посилання і копіюємо в буфер
-      const shareUrl = `${window.location.origin}${window.location.pathname}?route=${mockRouteId}`;
-      await navigator.clipboard.writeText(shareUrl);
-      
-      alert(`Маршрут успішно "збережено"! 🎉\nПосилання скопійовано:\n${shareUrl}`);
-
+      if (data.success) {
+        // Tworzymy link na podstawie bieżącego adresu strony.
+        const shareableLink = `${window.location.origin}/shared-route/${data.id}`;
+        
+        // Automatycznie kopiujemy link do schowka.
+        await navigator.clipboard.writeText(shareableLink);
+        
+        alert("Trasa została zapisana, a link skopiowany do schowka 🔗\n\n" + shareableLink);
+      } else {
+        alert("Błąd zapisywania: " + data.error);
+      }
     } catch (error) {
-      console.error("Помилка збереження:", error);
-      alert("Не вдалося зберегти маршрут.");
+      console.error("Błąd sieci podczas zapisywania trasy:", error);
+      alert("Nie udało się połączyć z serwerem.");
     }
   };
 
@@ -163,9 +194,9 @@ export default function App() {
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
       if (Array.isArray(data)) setSearchResults(data);
-      else { console.warn("API повернуло не масив:", data); setSearchResults([]); }
+      else { console.warn("API zwróciło wartość, która nie jest tablicą:", data); setSearchResults([]); }
     } catch (error) {
-      console.error("Помилка під час пошуку адреси:", error);
+      console.error("Błąd wyszukiwania adresu:", error);
       setSearchResults([]);
     }
   };
@@ -179,44 +210,75 @@ export default function App() {
 
   const handleMapSelect = (latlng) => {
     setSelectedRoute(prev => [...prev, {
-      id: Date.now(), name: `Точка на карті`, lat: latlng.lat, lng: latlng.lng, description: "Додано власноруч", hours: "-"
+      id: Date.now(), name: `Punkt na mapie`, lat: latlng.lat, lng: latlng.lng, description: "Dodano ręcznie", hours: "-"
     }]);
     setIsSelectingOnMap(false);
   };
 
   const handleMapRouteUpdate = (leafletWaypoints) => {
     setSelectedRoute(prevRoute => {
-      const usedIds = new Set(); // Створюємо сховище для відстеження унікальних ID
+      const usedIds = new Set(); // Zbiór do śledzenia unikalnych identyfikatorów.
       
       const updatedRoute = leafletWaypoints.map((wp, index) => {
-        // 1. Шукаємо, чи є вже точка з такими координатами
+        // 1. Sprawdzamy, czy istnieje już punkt o tych współrzędnych.
         const existing = prevRoute.find(p => Math.abs(p.lat - wp.latLng.lat) < 0.001 && Math.abs(p.lng - wp.latLng.lng) < 0.001);
         
-        // 2. Якщо точка існує і її ID ЩЕ НЕ використовувався у цьому оновленні
+        // 2. Jeśli punkt istnieje, a jego identyfikator nie został jeszcze użyty w tej aktualizacji.
         if (existing && !usedIds.has(existing.id)) {
           usedIds.add(existing.id);
           return existing;
         }
         
-        // 3. Якщо точки немає, АБО її ID вже зайнятий (це дублікат по координатах), створюємо новий
-        // Додаємо index в кінець для гарантованої унікальності навіть в одну мілісекунду
+        // 3. Jeśli punkt nie istnieje lub jego identyfikator jest już użyty, tworzymy nowy.
+        // Dodajemy indeks, aby zagwarantować unikalność identyfikatora.
         const newId = `wp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${index}`;
         usedIds.add(newId);
         
         return { 
           id: newId, 
-          name: existing ? existing.name : "Проміжна точка", 
+          name: existing ? existing.name : "Punkt pośredni", 
           lat: wp.latLng.lat, 
           lng: wp.latLng.lng, 
-          description: existing ? existing.description : "Додано перетягуванням маршруту", 
+          description: existing ? existing.description : "Dodano przez przeciągnięcie trasy", 
           hours: existing ? existing.hours : "-" 
         };
       });
 
-      // Перевіряємо, чи масив дійсно змінився, щоб уникнути зайвих рендерів
+      // Sprawdzamy, czy tablica rzeczywiście się zmieniła, aby uniknąć zbędnych renderowań.
       const isDifferent = updatedRoute.length !== prevRoute.length || updatedRoute.some((p, i) => p.id !== prevRoute[i]?.id);
       return isDifferent ? updatedRoute : prevRoute;
     });
+  };
+
+  const handleOptimizeRoute = async () => {
+    if (selectedRoute.length < 3) {
+      return alert("Do optymalizacji potrzebne są co najmniej 3 punkty!");
+    }
+
+    try {
+      const response = await fetch('http://localhost:5000/api/optimize-route', { 
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // Token autoryzacyjny nie jest wymagany, jeśli algorytm jest publicznie dostępny.
+        },
+        // Backend oczekuje tablicy w polu "points".
+        body: JSON.stringify({ points: selectedRoute })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Aktualizujemy stan; Leaflet automatycznie narysuje trasę w nowej kolejności.
+        setSelectedRoute(data.route);
+        alert("Trasa została zoptymalizowana! 🪄");
+      } else {
+        alert(data.error || "Błąd optymalizacji na serwerze.");
+      }
+    } catch (error) {
+      console.error("Błąd żądania optymalizacji:", error);
+      alert("Nie udało się połączyć z serwerem. Sprawdź, czy backend jest uruchomiony.");
+    }
   };
 
   const appBg = isDarkMode ? '#121212' : '#fdfdfd';
@@ -227,14 +289,14 @@ export default function App() {
   return (
     <div style={{ display: 'flex', height: '100vh', fontFamily: 'sans-serif', backgroundColor: appBg }}>
       
-      {/* ВИПРАВЛЕНО: Додано overflowY: 'scroll', overflowX: 'hidden' для фіксації ширини та уникнення трясіння */}
+      {/* Stałe paski przewijania zapobiegają zmianom szerokości panelu. */}
       <div style={{ width: '400px', padding: '20px', backgroundColor: sidebarBg, borderRight: `1px solid ${borderColor}`, display: 'flex', flexDirection: 'column', overflowY: 'scroll', overflowX: 'hidden' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h2 style={{ color: textColor, margin: 0 }}>Оптимізатор</h2>
+          <h2 style={{ color: textColor, margin: 0 }}>Optymalizator tras</h2>
           <button onClick={() => setIsDarkMode(!isDarkMode)} style={{ background: 'none', border: `1px solid ${borderColor}`, borderRadius: '4px', padding: '6px 10px', cursor: 'pointer', color: textColor }}>{isDarkMode ? '☀️' : '🌙'}</button>
         </div>
 
-        {/*Панель авторизації */}
+        {/* Panel logowania */}
         <div style={{ marginBottom: '20px', padding: '12px 15px', backgroundColor: isDarkMode ? '#2d2d2d' : '#f8f9fa', borderRadius: '8px', border: `1px solid ${borderColor}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           {user ? (
             <>
@@ -247,22 +309,22 @@ export default function App() {
                 />
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   <span style={{ color: textColor, fontSize: '13px', fontWeight: '600' }}>{user.displayName}</span>
-                  <span style={{ color: isDarkMode ? '#a0a0a0' : '#666', fontSize: '11px' }}>Авторизовано</span>
+                  <span style={{ color: isDarkMode ? '#a0a0a0' : '#666', fontSize: '11px' }}>Zalogowano</span>
                 </div>
               </div>
-              <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>Вийти</button>
+              <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>Wyloguj</button>
             </>
           ) : (
             <>
-              <span style={{ color: textColor, fontSize: '13px' }}>Зберігайте свої маршрути</span>
+              <span style={{ color: textColor, fontSize: '13px' }}>Zapisuj swoje trasy</span>
               <button onClick={handleGoogleLogin} style={{ backgroundColor: '#4285F4', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                Увійти з Google
+                Zaloguj się przez Google
               </button>
             </>
           )}
         </div>
         
-        <h3 style={{ color: textColor, margin: '0 0 15px 0' }}>Каталог</h3>
+        <h3 style={{ color: textColor, margin: '0 0 15px 0' }}>Katalog</h3>
         <div style={{ flexShrink: 0 }}>
           {mockLocations.map(loc => (
             <LocationCard key={loc.id} loc={loc} isAdded={selectedRoute.some(r => r.id === loc.id)} onToggle={toggleLocation} isDarkMode={isDarkMode} />
@@ -270,22 +332,22 @@ export default function App() {
         </div>
 
         <button onClick={() => setIsModalOpen(true)} style={{ margin: '10px 0 20px 0', padding: '12px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-          ➕ Знайти або додати свою точку
+          ➕ Znajdź lub dodaj punkt
         </button>
 
         <hr style={{ margin: '10px 0 20px 0', borderTop: `1px solid ${borderColor}` }} />
 
         {selectedRoute.length > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 15px 0' }}>
-            <h3 style={{ margin: 0, color: textColor, fontSize: '16px' }}>Ваш маршрут: ({selectedRoute.length})</h3>
+            <h3 style={{ margin: 0, color: textColor, fontSize: '16px' }}>Twoja trasa: ({selectedRoute.length})</h3>
             
-            {/* Кнопка з'являється тільки якщо юзер залогінений і точок >= 2 */}
+            {/* Przycisk jest widoczny dla zalogowanych użytkowników, gdy trasa ma co najmniej 2 punkty. */}
             {user && selectedRoute.length >= 2 && (
               <button
                 onClick={handleSaveAndShare}
                 style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '5px' }}
               >
-                🔗 Поділитися
+                🔗 Udostępnij
               </button>
             )}
           </div>
@@ -306,12 +368,12 @@ export default function App() {
                 value={loc}
                 onDragStart={() => {
                   setActiveLocationId(loc.id);
-                  // ЗМІНЕНО: Даємо команді карті закрити спливаючі вікна
+                  // Zamykamy okna podręczne na mapie.
                   window.dispatchEvent(new Event('close-map-popups')); 
                 }}
                 onClick={() => {
                   setActiveLocationId(isActive ? null : loc.id);
-                  // ЗМІНЕНО: Даємо команді карті закрити спливаючі вікна
+                  // Zamykamy okna podręczne na mapie.
                   window.dispatchEvent(new Event('close-map-popups'));
                 }}
                 whileDrag={{ 
@@ -347,8 +409,10 @@ export default function App() {
         </Reorder.Group>
 
         {selectedRoute.length > 0 && (
-          <button style={{ marginTop: '20px', padding: '12px', width: '100%', backgroundColor: isDarkMode ? '#e0e0e0' : '#333', color: isDarkMode ? '#121212' : 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', flexShrink: 0 }}>
-            Відправити на бекенд
+          <button 
+          onClick={handleOptimizeRoute} 
+          style={{ marginTop: '20px', padding: '12px', width: '100%', backgroundColor: isDarkMode ? '#e0e0e0' : '#333', color: isDarkMode ? '#121212' : 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', flexShrink: 0 }}>
+            Optymalizuj trasę
           </button>
         )}
       </div>
@@ -356,8 +420,8 @@ export default function App() {
       <div style={{ flexGrow: 1, position: 'relative' }}>
         {isSelectingOnMap && (
           <div style={{ position: 'absolute', top: '20px', left: '50%', transform: 'translateX(-50%)', zIndex: 1000, backgroundColor: '#333', color: 'white', padding: '12px 24px', borderRadius: '30px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', display: 'flex', gap: '15px', alignItems: 'center' }}>
-            <span>Клікніть будь-де на карті, щоб додати точку</span>
-            <button onClick={() => setIsSelectingOnMap(false)} style={{ backgroundColor: '#ff4d4d', border: 'none', color: 'white', padding: '6px 12px', borderRadius: '15px', cursor: 'pointer' }}>Скасувати</button>
+            <span>Kliknij dowolne miejsce na mapie, aby dodać punkt</span>
+            <button onClick={() => setIsSelectingOnMap(false)} style={{ backgroundColor: '#ff4d4d', border: 'none', color: 'white', padding: '6px 12px', borderRadius: '15px', cursor: 'pointer' }}>Anuluj</button>
           </div>
         )}
         
@@ -375,10 +439,10 @@ export default function App() {
       {isModalOpen && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 2000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
           <div style={{ width: '450px', backgroundColor: sidebarBg, borderRadius: '8px', padding: '24px', border: `1px solid ${borderColor}` }}>
-            <h3 style={{ margin: '0 0 20px 0', color: textColor }}>Додати нову точку</h3>
+            <h3 style={{ margin: '0 0 20px 0', color: textColor }}>Dodaj nowy punkt</h3>
             <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
-              <input type="text" placeholder="Введіть адресу в Лодзі..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} style={{ flexGrow: 1, padding: '10px', borderRadius: '4px', border: `1px solid ${borderColor}`, backgroundColor: isDarkMode ? '#2d2d2d' : '#fff', color: textColor }} />
-              <button onClick={handleSearch} style={{ padding: '10px 16px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Знайти</button>
+              <input type="text" placeholder="Wpisz adres w Łodzi..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} style={{ flexGrow: 1, padding: '10px', borderRadius: '4px', border: `1px solid ${borderColor}`, backgroundColor: isDarkMode ? '#2d2d2d' : '#fff', color: textColor }} />
+              <button onClick={handleSearch} style={{ padding: '10px 16px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Szukaj</button>
             </div>
             <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '20px' }}>
               {searchResults.map((res, i) => (
@@ -386,8 +450,8 @@ export default function App() {
               ))}
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <button onClick={() => { setIsModalOpen(false); setIsSelectingOnMap(true); }} style={{ padding: '10px 15px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>📍 Вказати на карті</button>
-              <button onClick={() => setIsModalOpen(false)} style={{ padding: '10px 15px', backgroundColor: 'transparent', border: `1px solid ${borderColor}`, color: textColor, borderRadius: '4px', cursor: 'pointer' }}>Закрити</button>
+              <button onClick={() => { setIsModalOpen(false); setIsSelectingOnMap(true); }} style={{ padding: '10px 15px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>📍 Wskaż na mapie</button>
+              <button onClick={() => setIsModalOpen(false)} style={{ padding: '10px 15px', backgroundColor: 'transparent', border: `1px solid ${borderColor}`, color: textColor, borderRadius: '4px', cursor: 'pointer' }}>Zamknij</button>
             </div>
           </div>
         </div>

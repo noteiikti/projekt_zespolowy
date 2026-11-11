@@ -70,7 +70,7 @@ function LocateControl({ isDarkMode }) {
   return (
     <>
       <button onClick={() => position ? map.flyTo(position, 15) : map.locate()} style={{ position: 'absolute', top: '80px', left: '10px', zIndex: 1000, backgroundColor: isDarkMode ? '#2d2d2d' : 'white', color: isDarkMode ? '#e0e0e0' : 'black', border: `2px solid ${isDarkMode ? '#444' : 'rgba(0,0,0,0.2)'}`, borderRadius: '4px', width: '34px', height: '34px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '18px', boxShadow: '0 1px 5px rgba(0,0,0,0.65)' }}>📍</button>
-      {position && <Marker position={position} icon={userIcon}><Popup autoPan={false}>Ви знаходитесь тут!</Popup></Marker>}
+      {position && <Marker position={position} icon={userIcon}><Popup autoPan={false}>Jesteś tutaj!</Popup></Marker>}
     </>
   );
 }
@@ -120,17 +120,17 @@ function RoutingMachine({ routePoints, isDarkMode, onMapRouteUpdate, setActiveLo
           icon: L.icon({
             iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
             shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-            iconAnchor: [12, 41], popupAnchor: [1, -34], // Зміщення вже "вшите" сюди
+            iconAnchor: [12, 41], popupAnchor: [1, -34], // Przesunięcie jest już uwzględnione.
             className: `route-marker-${pointId}`
           })
         });
 
-        const title = pointInfo ? pointInfo.name : `Точка ${i + 1}`;
+        const title = pointInfo ? pointInfo.name : `Punkt ${i + 1}`;
         const div = document.createElement('div');
         div.innerHTML = `
           <div style="text-align:center;">
             <div style="font-weight:bold; margin-bottom:8px; font-size:14px;">${title}</div>
-            <button class="remove-btn" style="background:#ff4d4d; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">Видалити з мапи</button>
+            <button class="remove-btn" style="background:#ff4d4d; color:white; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">Usuń z mapy</button>
           </div>
         `;
         div.querySelector('.remove-btn').addEventListener('click', () => {
@@ -140,22 +140,22 @@ function RoutingMachine({ routePoints, isDarkMode, onMapRouteUpdate, setActiveLo
           map.closePopup();
         });
         
-        // 1. Прив'язуємо вікно до маркера, щоб воно знало його координати та рухалось за ним
+        // 1. Powiązujemy okno z markerem, aby poruszało się razem z nim.
         marker.bindPopup(div, { autoPan: false });
         
-        // 2. Жорстко вимикаємо стандартний клік Leaflet, щоб він не конфліктував із React
+        // 2. Wyłączamy standardową obsługę kliknięcia Leaflet, aby nie kolidowała z Reactem.
         marker.off('click');
         
         marker.on('dragstart', () => {
           if (pointInfo && setActiveLocationIdRef.current) {
             window.__isMapMarkerClick = true;
             setActiveLocationIdRef.current(pointInfo.id);
-            marker.closePopup(); // Приховуємо вікно на час перетягування для зручності
+            marker.closePopup(); // Zamykamy okno na czas przeciągania.
             setTimeout(() => { window.__isMapMarkerClick = false; }, 100);
           }
         });
         
-        // 3. Беремо управління вікном виключно у свої руки
+        // 3. Samodzielnie zarządzamy oknem podręcznym.
         marker.on('click', () => {
           if (pointInfo && setActiveLocationIdRef.current) {
             window.__isMapMarkerClick = true;
@@ -186,14 +186,13 @@ function RoutingMachine({ routePoints, isDarkMode, onMapRouteUpdate, setActiveLo
     return () => {
       try {
         if (map && control) {
-          // ЗМІНЕНО: Примусово обнуляємо точки перед видаленням.
-          // Це миттєво скасовує всі завислі мережеві запити (XMLHttpRequest) 
-          // і запобігає асинхронним помилкам малювання ліній.
+          // Czyścimy punkty przed usunięciem, aby anulować oczekujące żądania
+          // XMLHttpRequest i zapobiec asynchronicznym błędom rysowania tras.
           control.getPlan().setWaypoints([]);
           map.removeControl(control);
         }
       } catch (error) {
-        // Ігноруємо помилки очищення
+        // Błędy czyszczenia nie wpływają na działanie aplikacji.
       }
     };
   }, [map]);
@@ -288,7 +287,7 @@ export default function MapComponent({ routePoints, isDarkMode, isSelectingOnMap
               className: `route-marker-${routePoints[0].id}`
             })}
           >
-            {/* Повертаємо класичну обгортку для одинарного маркера, щоб він теж знав свій відступ */}
+            {/* Zachowujemy standardową obsługę pojedynczego markera i jego przesunięcia. */}
             <Popup autoPan={false}>{routePoints[0].name}</Popup>
           </Marker>
         )}
