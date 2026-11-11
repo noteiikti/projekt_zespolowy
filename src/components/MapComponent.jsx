@@ -4,6 +4,7 @@ import L from 'leaflet';
 import 'leaflet-routing-machine';
 import 'leaflet/dist/leaflet.css';
 
+
 const userIcon = L.divIcon({
   className: 'custom-user-marker',
   html: `<div class="user-location-wrapper"><div class="user-location-pulse"></div><div class="user-location-dot"></div></div>`,
@@ -184,8 +185,16 @@ function RoutingMachine({ routePoints, isDarkMode, onMapRouteUpdate, setActiveLo
     
     return () => {
       try {
-        if (map) map.removeControl(control);
-      } catch (error) {}
+        if (map && control) {
+          // ЗМІНЕНО: Примусово обнуляємо точки перед видаленням.
+          // Це миттєво скасовує всі завислі мережеві запити (XMLHttpRequest) 
+          // і запобігає асинхронним помилкам малювання ліній.
+          control.getPlan().setWaypoints([]);
+          map.removeControl(control);
+        }
+      } catch (error) {
+        // Ігноруємо помилки очищення
+      }
     };
   }, [map]);
 

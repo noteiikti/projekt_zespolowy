@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Reorder } from 'framer-motion';
 import MapComponent from './components/MapComponent';
+import { signInWithPopup, signOut } from "firebase/auth";
+import { auth, googleProvider } from "./firebase";
 
 const mockLocations = [
   { id: 1, name: "Galeria Manufaktura", lat: 51.7784, lng: 19.4493, image: "https://upload.wikimedia.org/wikipedia/commons/c/cd/Manufaktura_Lodz_01.jpg", description: "Величезний торгово-розважальний комплекс.", hours: "10:00 - 22:00" },
@@ -43,6 +45,80 @@ function LocationCard({ loc, isAdded, onToggle, isDarkMode }) {
 }
 
 export default function App() {
+  // НОВИЙ СТАН: Зберігає дані користувача, якщо він залогінений
+  const [user, setUser] = useState(null);
+
+  // ФУНКЦІЯ: Вхід через Google
+  const handleGoogleLogin = async () => {
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      setUser(result.user);
+      
+      // Отримуємо JWT-токен, який згодом будемо відправляти бекендеру
+      const token = await result.user.getIdToken();
+      console.log("Успішний вхід! Ось твій JWT токен для бекенду:", token);
+    } catch (error) {
+      console.error("Помилка авторизації:", error);
+    }
+  };
+
+  // ФУНКЦІЯ: Вихід з акаунту
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setUser(null);
+    } catch (error) {
+      console.error("Помилка виходу:", error);
+    }
+  };
+
+  // ФУНКЦІЯ: Збереження та генерація посилання
+  const handleSaveAndShare = async () => {
+    if (!user) return alert("Будь ласка, увійдіть, щоб зберегти маршрут!");
+    if (selectedRoute.length < 2) return alert("Додайте хоча б 2 точки до маршруту!");
+
+    try {
+      // 1. Отримуємо свіжий токен (це ВАЖЛИВО робити перед кожним запитом на бекенд)
+      const token = await user.getIdToken();
+
+      // 2. Формуємо JSON, який чекатиме бекендер
+      const payload = {
+        route_name: `Маршрут від ${user.displayName}`,
+        waypoints: selectedRoute
+      };
+
+      console.log("Готуємось відправити на бекенд. Токен:", token);
+      console.log("Дані маршруту:", payload);
+
+      // --- ТУТ У МАЙБУТНЬОМУ БУДЕ РЕАЛЬНИЙ ЗАПИТ ---
+      /*
+      const response = await fetch('http://localhost:5000/api/routes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` // Передаємо токен для Node.js
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      const routeId = data.route_id; // Отримуємо реальний ID з бази PostgreSQL
+      */
+
+      // --- ПОКИ БЕКЕНДУ НЕМАЄ, ІМІТУЄМО УСПІШНЕ ЗБЕРЕЖЕННЯ ---
+      const mockRouteId = "route-" + Date.now().toString(36);
+
+      // 3. Формуємо посилання і копіюємо в буфер
+      const shareUrl = `${window.location.origin}${window.location.pathname}?route=${mockRouteId}`;
+      await navigator.clipboard.writeText(shareUrl);
+      
+      alert(`Маршрут успішно "збережено"! 🎉\nПосилання скопійовано:\n${shareUrl}`);
+
+    } catch (error) {
+      console.error("Помилка збереження:", error);
+      alert("Не вдалося зберегти маршрут.");
+    }
+  };
+
   const [selectedRoute, setSelectedRoute] = useState(() => {
     const savedRoute = localStorage.getItem('app-route');
     return savedRoute ? JSON.parse(savedRoute) : [];
@@ -110,18 +186,34 @@ export default function App() {
 
   const handleMapRouteUpdate = (leafletWaypoints) => {
     setSelectedRoute(prevRoute => {
+      const usedIds = new Set(); // Створюємо сховище для відстеження унікальних ID
+      
       const updatedRoute = leafletWaypoints.map((wp, index) => {
+        // 1. Шукаємо, чи є вже точка з такими координатами
         const existing = prevRoute.find(p => Math.abs(p.lat - wp.latLng.lat) < 0.001 && Math.abs(p.lng - wp.latLng.lng) < 0.001);
-        if (existing) return existing;
+        
+        // 2. Якщо точка існує і її ID ЩЕ НЕ використовувався у цьому оновленні
+        if (existing && !usedIds.has(existing.id)) {
+          usedIds.add(existing.id);
+          return existing;
+        }
+        
+        // 3. Якщо точки немає, АБО її ID вже зайнятий (це дублікат по координатах), створюємо новий
+        // Додаємо index в кінець для гарантованої унікальності навіть в одну мілісекунду
+        const newId = `wp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${index}`;
+        usedIds.add(newId);
+        
         return { 
-          id: `wp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, 
-          name: "Проміжна точка", 
+          id: newId, 
+          name: existing ? existing.name : "Проміжна точка", 
           lat: wp.latLng.lat, 
           lng: wp.latLng.lng, 
-          description: "Додано перетягуванням маршруту", 
-          hours: "-" 
+          description: existing ? existing.description : "Додано перетягуванням маршруту", 
+          hours: existing ? existing.hours : "-" 
         };
       });
+
+      // Перевіряємо, чи масив дійсно змінився, щоб уникнути зайвих рендерів
       const isDifferent = updatedRoute.length !== prevRoute.length || updatedRoute.some((p, i) => p.id !== prevRoute[i]?.id);
       return isDifferent ? updatedRoute : prevRoute;
     });
@@ -141,6 +233,34 @@ export default function App() {
           <h2 style={{ color: textColor, margin: 0 }}>Оптимізатор</h2>
           <button onClick={() => setIsDarkMode(!isDarkMode)} style={{ background: 'none', border: `1px solid ${borderColor}`, borderRadius: '4px', padding: '6px 10px', cursor: 'pointer', color: textColor }}>{isDarkMode ? '☀️' : '🌙'}</button>
         </div>
+
+        {/*Панель авторизації */}
+        <div style={{ marginBottom: '20px', padding: '12px 15px', backgroundColor: isDarkMode ? '#2d2d2d' : '#f8f9fa', borderRadius: '8px', border: `1px solid ${borderColor}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {user ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <img 
+                    src={user.photoURL} 
+                    alt="avatar" 
+                    referrerPolicy="no-referrer" 
+                    style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} 
+                />
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ color: textColor, fontSize: '13px', fontWeight: '600' }}>{user.displayName}</span>
+                  <span style={{ color: isDarkMode ? '#a0a0a0' : '#666', fontSize: '11px' }}>Авторизовано</span>
+                </div>
+              </div>
+              <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#ff4d4d', cursor: 'pointer', fontSize: '13px', fontWeight: '500' }}>Вийти</button>
+            </>
+          ) : (
+            <>
+              <span style={{ color: textColor, fontSize: '13px' }}>Зберігайте свої маршрути</span>
+              <button onClick={handleGoogleLogin} style={{ backgroundColor: '#4285F4', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                Увійти з Google
+              </button>
+            </>
+          )}
+        </div>
         
         <h3 style={{ color: textColor, margin: '0 0 15px 0' }}>Каталог</h3>
         <div style={{ flexShrink: 0 }}>
@@ -155,7 +275,21 @@ export default function App() {
 
         <hr style={{ margin: '10px 0 20px 0', borderTop: `1px solid ${borderColor}` }} />
 
-        <h3 style={{ color: textColor, margin: '0 0 15px 0' }}>Мій маршрут ({selectedRoute.length})</h3>
+        {selectedRoute.length > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 15px 0' }}>
+            <h3 style={{ margin: 0, color: textColor, fontSize: '16px' }}>Ваш маршрут: ({selectedRoute.length})</h3>
+            
+            {/* Кнопка з'являється тільки якщо юзер залогінений і точок >= 2 */}
+            {user && selectedRoute.length >= 2 && (
+              <button
+                onClick={handleSaveAndShare}
+                style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '5px' }}
+              >
+                🔗 Поділитися
+              </button>
+            )}
+          </div>
+        )}
         
         <Reorder.Group 
           axis="y" 
