@@ -1,3 +1,15 @@
+<<<<<<< Updated upstream
+=======
+# Секретные файлы конфигурации
+.env
+
+# Зависимости
+node_modules/
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+>>>>>>> Stashed changes
 # Logs
 logs
 *.log
